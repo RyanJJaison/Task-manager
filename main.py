@@ -9,7 +9,7 @@ from sqlalchemy.engine import default
 pymysql.install_as_MySQLdb()
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI']='mysql+pymysql://ryan:password123@localhost/todo_db'
+app.config['SQLALCHEMY_DATABASE_URI']='mysql+pymysql://***:*********@localhost/todo_db'
 db=SQLAlchemy(app)
 
 class Todo(db.Model):
