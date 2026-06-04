@@ -1,16 +1,24 @@
-
+from werkzeug.security import generate_password_hash,check_password_hash
 
 from flask import Flask, render_template, request, redirect
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import pymysql
-from sqlalchemy.engine import default
+
 
 pymysql.install_as_MySQLdb()
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI']='mysql+pymysql://***:*********@localhost/todo_db'
+app.config['SQLALCHEMY_DATABASE_URI']='mysql+pymysql://ryan:password123@localhost/todo_db'
 db=SQLAlchemy(app)
+
+class User(db.Model):
+    id=db.Column(db.Integer, primary_key=True)
+    username=db.Column(db.String(50), unique=True, nullable=False)
+    password_hash=db.Column(db.String(255), nullable=False)
+
+    def __repr__(self):
+        return f'<User {self.username}>'
 
 class Todo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -19,6 +27,29 @@ class Todo(db.Model):
     completed= db.Column(db.Boolean, default=False)
     def __repr__(self):
         return f'<Task {self.id}>'
+
+
+@app.route('/register', methods=['POST','GET'])
+def register():
+    if request.method=='POST':
+        username=request.form['username']
+        password=request.form['password']
+        if not username.strip() and password.strip():
+            password_hash=generate_password_hash(password)
+
+            user=User(username=username,password_hash=password_hash)
+            try:
+                db.session.add(user)
+                db.session.commit()
+                return redirect('/login')
+            except Exception as e:
+                return str(e)
+    return render_template('register.html')
+
+@app.route('/login', methods=['POST', 'GET'])
+def login()
+    if request.method == 'POST':
+        user
 
 @app.route('/', methods=['POST','GET'])
 def home():
@@ -58,7 +89,6 @@ def update(id):
             return redirect('/')
         except:
             return 'There was an issue'
-    else:
         return render_template('update.html', task=task_to_update)
 @app.route('/complete/<int:id>', methods=['GET'])
 def complete(id):
