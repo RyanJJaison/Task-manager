@@ -1,3 +1,4 @@
+from sqlalchemy.ext.asyncio import session
 from werkzeug.security import generate_password_hash,check_password_hash
 
 from flask import Flask, render_template, request, redirect
@@ -47,9 +48,17 @@ def register():
     return render_template('register.html')
 
 @app.route('/login', methods=['POST', 'GET'])
-def login()
+def login():
     if request.method == 'POST':
-        username=request.form
+        username=request.form['username']
+        password=request.form['password']
+        user=User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password_hash, password):
+            session['user_id']=user.id
+            return redirect('/')
+        return 'Invalid password or username'
+    return render_template('login.html')
+
 
 @app.route('/', methods=['POST','GET'])
 def home():
