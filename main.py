@@ -49,7 +49,7 @@ def register():
 @app.route('/login', methods=['POST', 'GET'])
 def login()
     if request.method == 'POST':
-        user
+        username=request.form
 
 @app.route('/', methods=['POST','GET'])
 def home():
