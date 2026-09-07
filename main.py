@@ -8,10 +8,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, render_template, request, redirect, session, url_for, flash, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_mail import Mail, Message
+from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import pymysql
 
 import estimation
+import reminders
+import scheduling
 
 load_dotenv()
 
@@ -26,8 +30,16 @@ if not app.config['SQLALCHEMY_DATABASE_URI']:
 if not app.config['SECRET_KEY']:
     raise RuntimeError('SECRET_KEY is not set. Copy .env.example to .env and fill it in.')
 
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', '587'))
+app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'true') == 'true'
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER')
+
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+mail = Mail(app)
 
 # Allowed values for Todo.status.
 TODO_STATUSES = ('pending', 'scheduled', 'in_progress', 'completed')
@@ -51,6 +63,8 @@ class User(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=True)
     timezone = db.Column(db.String(64), nullable=False, server_default='UTC', default='UTC')
     email_verified = db.Column(db.Boolean, nullable=False, server_default='0', default=False)
+    work_start_hour = db.Column(db.Integer, nullable=False, server_default='9', default=9)
+    work_end_hour = db.Column(db.Integer, nullable=False, server_default='17', default=17)
 
     todos = db.relationship('Todo', back_populates='user')
 
@@ -75,6 +89,11 @@ class Todo(db.Model):
     deadline = db.Column(db.DateTime, nullable=True)
     # AI-suggested breakdown, stored as a JSON array of strings.
     subtasks_json = db.Column(db.Text, nullable=True)
+    # Snapshotted at completion from the task's time sessions, so accuracy
+    # history stays queryable without walking child rows and survives any
+    # later pruning of session data.
+    actual_minutes = db.Column(db.Float, nullable=True)
+    accuracy_ratio = db.Column(db.Float, nullable=True)
 
     @property
     def subtasks(self):
@@ -91,6 +110,20 @@ class Todo(db.Model):
     def subtasks(self, values):
         self.subtasks_json = json.dumps(list(values)) if values else None
 
+    @property
+    def display_status(self):
+        """Status for presentation, which adds 'overrun' to the stored values.
+
+        Overrun is derived rather than stored: a task is overrunning once the
+        time logged against it exceeds its estimate while it is still open.
+        """
+        if self.status != 'completed' and self.estimated_minutes:
+            # Uses elapsed rather than logged time so a task that is running
+            # over right now is flagged immediately, not only once stopped.
+            if self.elapsed_seconds() / 60 > self.estimated_minutes:
+                return 'overrun'
+        return self.status
+
     def logged_minutes(self):
         """Total minutes recorded across every finished work session."""
         total = 0.0
@@ -98,6 +131,25 @@ class Todo(db.Model):
             if entry.started_at and entry.ended_at:
                 total += (entry.ended_at - entry.started_at).total_seconds() / 60
         return total
+
+    def open_session(self):
+        """The currently running session, or None when the task is not running."""
+        for entry in self.time_sessions:
+            if entry.ended_at is None:
+                return entry
+        return None
+
+    def elapsed_seconds(self):
+        """Seconds worked so far, including any session still running.
+
+        The live counter in the browser starts from this value and ticks
+        upwards, so a page reload never loses time already logged.
+        """
+        total = self.logged_minutes() * 60
+        running = self.open_session()
+        if running and running.started_at:
+            total += (datetime.utcnow() - running.started_at).total_seconds()
+        return int(total)
 
     user = db.relationship('User', back_populates='todos')
     time_sessions = db.relationship(
@@ -131,6 +183,12 @@ class Reminder(db.Model):
     reminder_type = db.Column(db.String(20), nullable=False)
     sent_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
+    # One reminder of each type per task. Enforced in the database so two
+    # concurrent scheduler runs cannot both pass a check and both send.
+    __table_args__ = (
+        db.UniqueConstraint('todo_id', 'reminder_type', name='uq_reminder_todo_type'),
+    )
+
     todo = db.relationship('Todo', back_populates='reminders')
 
     def __repr__(self):
@@ -152,26 +210,43 @@ def average_accuracy_ratio(user_id, limit=20):
     Returns None when the user has no completed task with both a usable
     estimate and logged time, so callers can skip calibration entirely.
     """
-    completed = (
-        Todo.query
-        .filter(Todo.user_id == user_id, Todo.status == 'completed')
-        .order_by(Todo.actual_end.desc())
-        .limit(limit)
-        .all()
-    )
-
-    ratios = []
-    for task in completed:
-        if not task.estimated_minutes:
-            continue
-        logged = task.logged_minutes()
-        if logged <= 0:
-            continue
-        ratios.append(logged / task.estimated_minutes)
+    ratios = [
+        row.accuracy_ratio
+        for row in (
+            Todo.query
+            .filter(
+                Todo.user_id == user_id,
+                Todo.status == 'completed',
+                Todo.accuracy_ratio.isnot(None),
+            )
+            .order_by(Todo.actual_end.desc())
+            .limit(limit)
+            .all()
+        )
+    ]
 
     if not ratios:
         return None
     return sum(ratios) / len(ratios)
+
+
+def recent_completed_examples(user_id, limit=3):
+    """Recent finished tasks with both an estimate and a measured duration.
+
+    Used as few-shot examples so the model can anchor on what this user's
+    tasks actually cost.
+    """
+    return (
+        Todo.query
+        .filter(
+            Todo.user_id == user_id,
+            Todo.status == 'completed',
+            Todo.accuracy_ratio.isnot(None),
+        )
+        .order_by(Todo.actual_end.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 @app.route('/register', methods=['POST', 'GET'])
@@ -234,7 +309,11 @@ def home():
         # Estimation runs before the insert but can never prevent it: on any
         # failure estimate_task returns the fallback and an error string.
         ratio = average_accuracy_ratio(user_id)
-        minutes, subtasks, error = estimation.estimate_task(task_content, ratio)
+        examples = [
+            (row.content, row.estimated_minutes, row.actual_minutes)
+            for row in recent_completed_examples(user_id)
+        ]
+        minutes, subtasks, error = estimation.estimate_task(task_content, ratio, examples)
 
         new_task = Todo(content=task_content, user_id=user_id, estimated_minutes=minutes)
         new_task.subtasks = subtasks
@@ -260,7 +339,11 @@ def home():
         .order_by(Todo.date_created)
         .all()
     )
-    return render_template('index.html', tasks=tasks)
+    return render_template(
+        'index.html',
+        tasks=tasks,
+        accuracy_ratio=average_accuracy_ratio(user_id),
+    )
 
 
 @app.route('/confirm/<int:id>', methods=['GET', 'POST'])
@@ -307,7 +390,131 @@ def owned_task_or_404(id):
     return task
 
 
-@app.route('/delete/<int:id>')
+@app.route('/schedule', methods=['GET', 'POST'])
+@login_required
+def schedule_day():
+    """Plan the day, and show the resulting timeline."""
+    user = db.session.get(User, session['user_id'])
+
+    if request.method == 'POST':
+        work_start, work_end = scheduling.working_window(user)
+
+        candidates = (
+            Todo.query
+            .filter(
+                Todo.user_id == user.id,
+                Todo.status.in_(('pending', 'scheduled')),
+            )
+            .order_by(Todo.priority, Todo.deadline)
+            .all()
+        )
+
+        blocks, error = scheduling.build_schedule(candidates, work_start, work_end)
+
+        if error:
+            app.logger.warning('Scheduling failed for user %s: %s', user.id, error)
+            flash('Could not build a schedule right now; your tasks are unchanged.')
+            return redirect(url_for('schedule_day'))
+
+        placed = {todo_id: (start, end) for todo_id, start, end in blocks}
+
+        try:
+            for task in candidates:
+                if task.id in placed:
+                    task.scheduled_start, task.scheduled_end = placed[task.id]
+                    task.status = 'scheduled'
+                else:
+                    # Overflow stays visible as unscheduled rather than vanishing.
+                    task.scheduled_start = None
+                    task.scheduled_end = None
+                    task.status = 'pending'
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash('There was a problem saving the schedule.')
+            return redirect(url_for('schedule_day'))
+
+        overflow = len(candidates) - len(placed)
+        if overflow > 0:
+            flash(
+                f'{len(placed)} task(s) scheduled. {overflow} did not fit in your '
+                'working hours and remain unscheduled.'
+            )
+
+        return redirect(url_for('schedule_day'))
+
+    scheduled = (
+        Todo.query
+        .filter(Todo.user_id == user.id, Todo.scheduled_start.isnot(None))
+        .order_by(Todo.scheduled_start)
+        .all()
+    )
+    unscheduled = (
+        Todo.query
+        .filter(
+            Todo.user_id == user.id,
+            Todo.scheduled_start.is_(None),
+            Todo.status != 'completed',
+        )
+        .order_by(Todo.priority, Todo.date_created)
+        .all()
+    )
+
+    work_start, work_end = scheduling.working_window(user)
+
+    return render_template(
+        'schedule.html',
+        scheduled=scheduled,
+        unscheduled=unscheduled,
+        user=user,
+        work_start=work_start,
+        work_end=work_end,
+    )
+
+
+@app.route('/reschedule/<int:id>', methods=['POST'])
+@login_required
+def reschedule(id):
+    """Manually override the times the scheduler chose for one task."""
+    task = owned_task_or_404(id)
+
+    raw_start = request.form.get('scheduled_start', '').strip()
+    raw_end = request.form.get('scheduled_end', '').strip()
+
+    if not raw_start or not raw_end:
+        # Clearing both fields removes the task from the timeline.
+        task.scheduled_start = None
+        task.scheduled_end = None
+        if task.status == 'scheduled':
+            task.status = 'pending'
+    else:
+        try:
+            # datetime-local inputs submit as YYYY-MM-DDTHH:MM.
+            start = datetime.fromisoformat(raw_start)
+            end = datetime.fromisoformat(raw_end)
+        except ValueError:
+            flash('Enter valid start and end times.')
+            return redirect(url_for('schedule_day'))
+
+        if end <= start:
+            flash('The end time must be after the start time.')
+            return redirect(url_for('schedule_day'))
+
+        task.scheduled_start = start
+        task.scheduled_end = end
+        if task.status == 'pending':
+            task.status = 'scheduled'
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash('There was a problem saving those times.')
+
+    return redirect(url_for('schedule_day'))
+
+
+@app.route('/delete/<int:id>', methods=['POST'])
 @login_required
 def delete(id):
     task_to_delete = owned_task_or_404(id)
@@ -326,6 +533,21 @@ def update(id):
     task_to_update = owned_task_or_404(id)
     if request.method == 'POST':
         task_to_update.content = request.form.get('content', '').strip() or task_to_update.content
+
+        raw_minutes = request.form.get('estimated_minutes', '').strip()
+        if raw_minutes:
+            try:
+                minutes = int(raw_minutes)
+                if not estimation.MIN_MINUTES <= minutes <= estimation.MAX_MINUTES:
+                    raise ValueError
+                task_to_update.estimated_minutes = minutes
+            except ValueError:
+                flash(
+                    f'Enter a whole number of minutes between '
+                    f'{estimation.MIN_MINUTES} and {estimation.MAX_MINUTES}.'
+                )
+                return render_template('update.html', task=task_to_update)
+
         try:
             db.session.commit()
             return redirect(url_for('home'))
@@ -335,14 +557,56 @@ def update(id):
     return render_template('update.html', task=task_to_update)
 
 
-@app.route('/complete/<int:id>', methods=['GET'])
+@app.route('/start/<int:id>', methods=['POST'])
+@login_required
+def start(id):
+    """Begin working on a task, opening a new time session."""
+    task = owned_task_or_404(id)
+
+    if task.status == 'completed':
+        flash('That task is already complete.')
+        return redirect(url_for('home'))
+
+    now = datetime.utcnow()
+
+    try:
+        # An already-open session means the task is running; do not stack another.
+        if not task.open_session():
+            db.session.add(TimeSession(todo_id=task.id, started_at=now))
+
+        task.status = 'in_progress'
+        if task.actual_start is None:
+            task.actual_start = now
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash('There was a problem starting the task.')
+
+    return redirect(url_for('home'))
+
+
+@app.route('/complete/<int:id>', methods=['POST'])
 @login_required
 def complete(id):
-    task_to_update = owned_task_or_404(id)
+    """Finish a task, closing any open session and recording accuracy."""
+    task = owned_task_or_404(id)
+    now = datetime.utcnow()
+
     try:
-        task_to_update.completed = True
-        task_to_update.status = 'completed'
-        task_to_update.actual_end = datetime.utcnow()
+        for entry in task.time_sessions:
+            if entry.ended_at is None:
+                entry.ended_at = now
+
+        task.completed = True
+        task.status = 'completed'
+        task.actual_end = now
+
+        # Snapshot the outcome so later estimates can be calibrated against it.
+        task.actual_minutes = task.logged_minutes()
+        if task.estimated_minutes and task.actual_minutes > 0:
+            task.accuracy_ratio = task.actual_minutes / task.estimated_minutes
+
         db.session.commit()
         return redirect(url_for('home'))
     except Exception:
@@ -350,7 +614,49 @@ def complete(id):
         return 'There was a problem completing the task'
 
 
+def start_reminder_scheduler():
+    """Begin the periodic reminder checks.
+
+    Disabled by default so that test runs, migrations and shell sessions do
+    not start a background thread. Set ENABLE_SCHEDULER=true to turn it on.
+    """
+    if os.environ.get('ENABLE_SCHEDULER', 'false') != 'true':
+        return None
+
+    scheduler = BackgroundScheduler(daemon=True)
+    scheduler.add_job(
+        reminders.run_checks,
+        'interval',
+        minutes=reminders.CHECK_INTERVAL_MINUTES,
+        kwargs={
+            'app': app,
+            'db': db,
+            'models': {'Todo': Todo, 'Reminder': Reminder},
+            'mail': mail,
+            'message_class': Message,
+        },
+        # Collapse missed runs instead of firing several at once after a pause.
+        coalesce=True,
+        max_instances=1,
+        id='reminder_checks',
+        replace_existing=True,
+    )
+    scheduler.start()
+    app.logger.info(
+        'Reminder scheduler started, checking every %s minutes',
+        reminders.CHECK_INTERVAL_MINUTES,
+    )
+    return scheduler
+
+
 if __name__ == '__main__':
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false') == 'true'
+
+    # Under the reloader the parent process also imports this module, so the
+    # scheduler is only started in the child that actually serves requests.
+    if not debug_mode or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        start_reminder_scheduler()
+
     # Schema is owned by Flask-Migrate. Run `flask db upgrade` to create or
     # update tables; do not call db.create_all() here.
-    app.run(debug=os.environ.get('FLASK_DEBUG', 'false') == 'true')
+    app.run(debug=debug_mode)

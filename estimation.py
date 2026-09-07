@@ -42,8 +42,12 @@ SYSTEM_PROMPT = (
 )
 
 
-def _build_user_prompt(content, accuracy_ratio=None):
-    """Assemble the user turn, including calibration when it is known."""
+def _build_user_prompt(content, accuracy_ratio=None, examples=None):
+    """Assemble the user turn, including calibration when it is known.
+
+    examples is an optional list of (description, estimated_minutes,
+    actual_minutes) triples from the user's finished tasks.
+    """
     lines = [f'Task: {content}']
 
     if accuracy_ratio is not None:
@@ -52,6 +56,14 @@ def _build_user_prompt(content, accuracy_ratio=None):
             'their estimated time on completed tasks. Adjust the estimate to '
             'reflect that tendency.'
         )
+
+    if examples:
+        lines.append("Recent finished tasks by this user, for reference:")
+        for description, estimated, actual in examples:
+            lines.append(
+                f'- "{description}": estimated {estimated} min, '
+                f'actually took {actual:.0f} min'
+            )
 
     lines.append('Respond with JSON only.')
     return '\n'.join(lines)
@@ -98,7 +110,7 @@ def _parse_response(raw_text):
     return minutes, subtasks[:6]
 
 
-def estimate_task(content, accuracy_ratio=None):
+def estimate_task(content, accuracy_ratio=None, examples=None):
     """Estimate a task's duration.
 
     Returns (estimated_minutes, subtasks, error). On any failure the estimate
@@ -115,7 +127,10 @@ def estimate_task(content, accuracy_ratio=None):
         'temperature': 0.2,
         'messages': [
             {'role': 'system', 'content': SYSTEM_PROMPT},
-            {'role': 'user', 'content': _build_user_prompt(content, accuracy_ratio)},
+            {
+                'role': 'user',
+                'content': _build_user_prompt(content, accuracy_ratio, examples),
+            },
         ],
     }
 
