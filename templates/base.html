@@ -6,13 +6,111 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <link rel="stylesheet" href="{{url_for('static' ,filename='css/main.css')}}">
+
+    <title>{% block title %}Task Master{% endblock %}</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    {% if session.get('user_id') %}
+    <script src="{{ url_for('static', filename='reminders.js') }}"></script>
+    {% endif %}
+
+    <!-- Loaded after reminders.js so its component is defined when Alpine starts. -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+
+    <style>
+        /* Hide Alpine-managed elements until Alpine has evaluated them, so
+           mutually exclusive states do not all flash on first paint. */
+        [x-cloak] { display: none !important; }
+    </style>
 
     {% block head %}{% endblock %}
 </head>
-{% block body %}
-<body>
+
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+
+    <nav class="border-b border-slate-200 bg-white">
+        <div class="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+
+            <a href="{{ url_for('home') }}"
+               class="text-lg font-semibold tracking-tight text-slate-900">
+                Task Master
+            </a>
+
+            <div class="flex items-center gap-4 text-sm">
+                {% if session.get('user_id') %}
+                    <a href="{{ url_for('home') }}"
+                       class="text-slate-600 hover:text-slate-900">Tasks</a>
+                    <a href="{{ url_for('schedule_day') }}"
+                       class="text-slate-600 hover:text-slate-900">Schedule</a>
+
+                    <div x-data="reminderNotifier({{ reminder_poll_seconds }})"
+                         x-cloak
+                         class="flex items-center">
+
+                        <button type="button"
+                                x-show="supported && permission === 'default'"
+                                x-on:click="requestPermission()"
+                                class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs
+                                       font-medium text-slate-700 hover:bg-slate-50">
+                            Enable notifications
+                        </button>
+
+                        <span x-show="permission === 'granted'"
+                              class="text-xs text-emerald-700"
+                              title="Reminders will appear while this tab is open">
+                            Notifications on
+                        </span>
+
+                        <span x-show="permission === 'denied'"
+                              class="text-xs text-slate-500"
+                              title="Re-enable notifications for this site in your browser settings">
+                            Notifications blocked
+                        </span>
+
+                        <span x-show="!supported"
+                              class="text-xs text-slate-500">
+                            Notifications unsupported
+                        </span>
+
+                    </div>
+
+                    <a href="{{ url_for('logout') }}"
+                       class="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700">
+                        Log out
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('login') }}"
+                       class="text-slate-600 hover:text-slate-900">Log in</a>
+                    <a href="{{ url_for('register') }}"
+                       class="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700">
+                        Register
+                    </a>
+                {% endif %}
+            </div>
+
+        </div>
+    </nav>
+
+    <main class="mx-auto max-w-4xl px-4 py-8">
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="mb-6 space-y-2">
+                    {% for message in messages %}
+                        <div class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block body %}{% endblock %}
+
+    </main>
 
 </body>
-{% endblock %}
 </html>

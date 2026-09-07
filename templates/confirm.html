@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Edit task · Task Master{% endblock %}
+{% block title %}Confirm estimate · Task Master{% endblock %}
 
 {% block body %}
 
@@ -8,26 +8,18 @@
 
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
 
-        <h1 class="mb-6 text-xl font-semibold tracking-tight">Edit task</h1>
+        <h1 class="mb-1 text-xl font-semibold tracking-tight">Confirm estimate</h1>
+        <p class="mb-6 text-sm text-slate-500">Adjust the suggested time before saving.</p>
 
-        <form action="{{ url_for('update', id=task.id) }}"
+        <p class="mb-6 rounded-md bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900">
+            {{ task.content }}
+        </p>
+
+        <form action="{{ url_for('confirm_estimate', id=task.id) }}"
               method="POST"
               class="space-y-4">
 
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-            <div>
-                <label for="content" class="mb-1 block text-sm font-medium text-slate-700">
-                    Task
-                </label>
-                <input type="text"
-                       name="content"
-                       id="content"
-                       required
-                       value="{{ task.content }}"
-                       class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm
-                              focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500">
-            </div>
 
             <div>
                 <label for="estimated_minutes" class="mb-1 block text-sm font-medium text-slate-700">
@@ -38,7 +30,8 @@
                        id="estimated_minutes"
                        min="{{ min_minutes }}"
                        max="{{ max_minutes }}"
-                       value="{{ task.estimated_minutes or '' }}"
+                       required
+                       value="{{ task.estimated_minutes }}"
                        class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm
                               focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500">
             </div>
@@ -47,15 +40,31 @@
                 <button type="submit"
                         class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white
                                hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500">
-                    Save changes
+                    Save task
                 </button>
                 <a href="{{ url_for('home') }}"
                    class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    Cancel
+                    Back to tasks
                 </a>
             </div>
 
         </form>
+
+        {% if task.subtasks %}
+
+        <div class="mt-6 border-t border-slate-200 pt-6">
+
+            <h2 class="mb-2 text-sm font-semibold text-slate-900">Suggested steps</h2>
+
+            <ol class="list-decimal space-y-1 pl-5 text-sm text-slate-600">
+                {% for step in task.subtasks %}
+                <li>{{ step }}</li>
+                {% endfor %}
+            </ol>
+
+        </div>
+
+        {% endif %}
 
     </div>
 
