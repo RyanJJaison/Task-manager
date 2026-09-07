@@ -8,8 +8,13 @@
 
     <h1 class="mb-4 text-2xl font-semibold tracking-tight">Your tasks</h1>
 
+    <!-- Estimating a new task calls a remote API and takes a couple of
+         seconds, during which the page looks idle. The form locks itself on
+         submit so a second press cannot create the task twice. -->
     <form action="{{ url_for('home') }}"
           method="POST"
+          x-data="{ submitting: false }"
+          x-on:submit="if (submitting) { $event.preventDefault(); return } submitting = true"
           class="flex flex-col gap-2 sm:flex-row">
 
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -19,13 +24,18 @@
                id="content"
                required
                placeholder="What needs doing?"
+               x-bind:readonly="submitting"
                class="w-full flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm
-                      shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500">
+                      shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1
+                      focus:ring-slate-500 read-only:bg-slate-100">
 
         <button type="submit"
+                x-bind:disabled="submitting"
                 class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white
-                       hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500">
-            Add task
+                       hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500
+                       disabled:cursor-not-allowed disabled:bg-slate-400">
+            <span x-show="!submitting">Add task</span>
+            <span x-show="submitting" x-cloak>Estimating&hellip;</span>
         </button>
 
     </form>
