@@ -10,10 +10,13 @@
 
     <h1>Task Master</h1>
 
+    <p><a href="{{ url_for('logout') }}">Log out</a></p>
+
     <table border="1">
 
         <tr>
             <th>Task</th>
+            <th>Estimate</th>
             <th>Added</th>
             <th>Actions</th>
         </tr>
@@ -34,6 +37,14 @@
 
                 {% endif %}
 
+            </td>
+
+            <td>
+                {% if task.estimated_minutes %}
+                    {{ task.estimated_minutes }} min
+                {% else %}
+                    &mdash;
+                {% endif %}
             </td>
 
             <td>

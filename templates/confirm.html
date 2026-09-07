@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<title>Confirm Estimate</title>
+{% endblock %}
+
+{% block body %}
+
+<div class="content">
+
+    <h1>Confirm Estimate</h1>
+
+    <p><strong>{{ task.content }}</strong></p>
+
+    <form action="{{ url_for('confirm_estimate', id=task.id) }}"
+          method="POST">
+
+        <label for="estimated_minutes">Estimated minutes</label>
+
+        <input type="number"
+               name="estimated_minutes"
+               id="estimated_minutes"
+               min="{{ min_minutes }}"
+               max="{{ max_minutes }}"
+               value="{{ task.estimated_minutes }}">
+
+        <input type="submit"
+               value="Save Task">
+
+    </form>
+
+    {% if task.subtasks %}
+
+    <h2>Suggested steps</h2>
+
+    <ol>
+        {% for step in task.subtasks %}
+        <li>{{ step }}</li>
+        {% endfor %}
+    </ol>
+
+    {% endif %}
+
+    <p><a href="{{ url_for('home') }}">Back to tasks</a></p>
+
+</div>
+
+{% endblock %}
