@@ -11,9 +11,20 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    {% if session.get('user_id') %}
+    <script src="{{ url_for('static', filename='reminders.js') }}"></script>
+    {% endif %}
+
+    <!-- Loaded after reminders.js so its component is defined when Alpine starts. -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+
+    <style>
+        /* Hide Alpine-managed elements until Alpine has evaluated them, so
+           mutually exclusive states do not all flash on first paint. */
+        [x-cloak] { display: none !important; }
+    </style>
 
     {% block head %}{% endblock %}
 </head>
@@ -34,6 +45,38 @@
                        class="text-slate-600 hover:text-slate-900">Tasks</a>
                     <a href="{{ url_for('schedule_day') }}"
                        class="text-slate-600 hover:text-slate-900">Schedule</a>
+
+                    <div x-data="reminderNotifier({{ reminder_poll_seconds }})"
+                         x-cloak
+                         class="flex items-center">
+
+                        <button type="button"
+                                x-show="supported && permission === 'default'"
+                                x-on:click="requestPermission()"
+                                class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs
+                                       font-medium text-slate-700 hover:bg-slate-50">
+                            Enable notifications
+                        </button>
+
+                        <span x-show="permission === 'granted'"
+                              class="text-xs text-emerald-700"
+                              title="Reminders will appear while this tab is open">
+                            Notifications on
+                        </span>
+
+                        <span x-show="permission === 'denied'"
+                              class="text-xs text-slate-500"
+                              title="Re-enable notifications for this site in your browser settings">
+                            Notifications blocked
+                        </span>
+
+                        <span x-show="!supported"
+                              class="text-xs text-slate-500">
+                            Notifications unsupported
+                        </span>
+
+                    </div>
+
                     <a href="{{ url_for('logout') }}"
                        class="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700">
                         Log out
