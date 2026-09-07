@@ -12,6 +12,8 @@
           method="POST"
           class="flex flex-col gap-2 sm:flex-row">
 
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
         <input type="text"
                name="content"
                id="content"
@@ -141,6 +143,7 @@
 
                 {% if not task.open_session() %}
                 <form action="{{ url_for('start', id=task.id) }}" method="POST" class="inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit"
                             class="rounded-md bg-blue-600 px-2.5 py-1 font-medium text-white hover:bg-blue-700">
                         Start
@@ -149,6 +152,7 @@
                 {% endif %}
 
                 <form action="{{ url_for('complete', id=task.id) }}" method="POST" class="inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit"
                             class="rounded-md border border-slate-300 px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-50">
                         Complete
@@ -163,6 +167,7 @@
             </a>
 
             <form action="{{ url_for('delete', id=task.id) }}" method="POST" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit"
                         class="rounded-md border border-rose-200 px-2.5 py-1 font-medium text-rose-700 hover:bg-rose-50">
                     Delete

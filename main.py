@@ -10,6 +10,7 @@ from flask import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_wtf.csrf import CSRFProtect
 from datetime import datetime
 import pymysql
 
@@ -32,6 +33,11 @@ if not app.config['SECRET_KEY']:
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+
+# Signs CSRF tokens with SECRET_KEY. Only state-changing methods are
+# protected, so the GET polling endpoint is unaffected. A fetch that posts
+# would need the token in an X-CSRFToken header rather than a form field.
+csrf = CSRFProtect(app)
 
 # Allowed values for Todo.status.
 TODO_STATUSES = ('pending', 'scheduled', 'in_progress', 'completed')
