@@ -11,7 +11,7 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
-from datetime import datetime
+from datetime import datetime, timedelta
 import pymysql
 
 import estimation
@@ -41,6 +41,10 @@ csrf = CSRFProtect(app)
 
 # Allowed values for Todo.status.
 TODO_STATUSES = ('pending', 'scheduled', 'in_progress', 'completed')
+
+# How recently an identical task title counts as the same submission rather
+# than a genuine second task.
+DUPLICATE_WINDOW_SECONDS = 10
 
 
 def login_required(view):
@@ -304,6 +308,19 @@ def home():
         task_content = request.form.get('content', '').strip()
         if not task_content:
             return redirect(url_for('home'))
+
+        # A resubmitted form, a refresh or an impatient second click would
+        # otherwise create the same task twice, and the slow estimate call
+        # keeps that window open for seconds. Treat an identical title from
+        # the same user moments ago as the same submission.
+        recent = Todo.query.filter(
+            Todo.user_id == user_id,
+            Todo.content == task_content,
+            Todo.date_created >= datetime.utcnow() - timedelta(seconds=DUPLICATE_WINDOW_SECONDS),
+        ).order_by(Todo.date_created.desc()).first()
+
+        if recent:
+            return redirect(url_for('confirm_estimate', id=recent.id))
 
         # Estimation runs before the insert but can never prevent it: on any
         # failure estimate_task returns the fallback and an error string.
