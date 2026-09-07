@@ -5,11 +5,11 @@ from functools import wraps
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from flask import Flask, render_template, request, redirect, session, url_for, flash, abort
+from flask import (
+    Flask, render_template, request, redirect, session, url_for, flash, abort, jsonify
+)
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from flask_mail import Mail, Message
-from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import pymysql
 
@@ -30,16 +30,8 @@ if not app.config['SQLALCHEMY_DATABASE_URI']:
 if not app.config['SECRET_KEY']:
     raise RuntimeError('SECRET_KEY is not set. Copy .env.example to .env and fill it in.')
 
-app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER')
-app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', '587'))
-app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'true') == 'true'
-app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER')
-
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-mail = Mail(app)
 
 # Allowed values for Todo.status.
 TODO_STATUSES = ('pending', 'scheduled', 'in_progress', 'completed')
@@ -196,11 +188,12 @@ class Reminder(db.Model):
 
 
 @app.context_processor
-def inject_estimate_bounds():
-    """Make the estimate limits available to templates for input validation."""
+def inject_template_globals():
+    """Values every template needs: input bounds and the client poll interval."""
     return {
         'min_minutes': estimation.MIN_MINUTES,
         'max_minutes': estimation.MAX_MINUTES,
+        'reminder_poll_seconds': reminders.POLL_INTERVAL_SECONDS,
     }
 
 
@@ -388,6 +381,32 @@ def owned_task_or_404(id):
     if task.user_id != session.get('user_id'):
         abort(404)
     return task
+
+
+@app.route('/api/reminders/check', methods=['GET'])
+def check_reminders():
+    """Report reminders the browser should raise, and record them as sent.
+
+    Anything returned here has its Reminder row written before the response
+    leaves, so a later poll never repeats it. Returns JSON rather than a
+    redirect when signed out, because the caller is fetch, not a browser
+    following links.
+    """
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'not authenticated'}), 401
+
+    try:
+        overruns = reminders.find_overruns(db, Todo, Reminder, user_id)
+        due_to_start = reminders.find_due_to_start(db, Todo, Reminder, user_id)
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Reminder check failed for user %s', user_id)
+        # An empty result keeps the client polling without raising a
+        # notification it cannot substantiate.
+        return jsonify({'overruns': [], 'due_to_start': []})
+
+    return jsonify({'overruns': overruns, 'due_to_start': due_to_start})
 
 
 @app.route('/schedule', methods=['GET', 'POST'])
@@ -614,49 +633,7 @@ def complete(id):
         return 'There was a problem completing the task'
 
 
-def start_reminder_scheduler():
-    """Begin the periodic reminder checks.
-
-    Disabled by default so that test runs, migrations and shell sessions do
-    not start a background thread. Set ENABLE_SCHEDULER=true to turn it on.
-    """
-    if os.environ.get('ENABLE_SCHEDULER', 'false') != 'true':
-        return None
-
-    scheduler = BackgroundScheduler(daemon=True)
-    scheduler.add_job(
-        reminders.run_checks,
-        'interval',
-        minutes=reminders.CHECK_INTERVAL_MINUTES,
-        kwargs={
-            'app': app,
-            'db': db,
-            'models': {'Todo': Todo, 'Reminder': Reminder},
-            'mail': mail,
-            'message_class': Message,
-        },
-        # Collapse missed runs instead of firing several at once after a pause.
-        coalesce=True,
-        max_instances=1,
-        id='reminder_checks',
-        replace_existing=True,
-    )
-    scheduler.start()
-    app.logger.info(
-        'Reminder scheduler started, checking every %s minutes',
-        reminders.CHECK_INTERVAL_MINUTES,
-    )
-    return scheduler
-
-
 if __name__ == '__main__':
-    debug_mode = os.environ.get('FLASK_DEBUG', 'false') == 'true'
-
-    # Under the reloader the parent process also imports this module, so the
-    # scheduler is only started in the child that actually serves requests.
-    if not debug_mode or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        start_reminder_scheduler()
-
     # Schema is owned by Flask-Migrate. Run `flask db upgrade` to create or
     # update tables; do not call db.create_all() here.
-    app.run(debug=debug_mode)
+    app.run(debug=os.environ.get('FLASK_DEBUG', 'false') == 'true')
