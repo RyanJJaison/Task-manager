@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Schedule · Task Master{% endblock %}
+{% block title %}Schedule · Nudge{% endblock %}
 
 {% block body %}
 
@@ -17,10 +17,10 @@
     <form action="{{ url_for('schedule_day') }}" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit"
-                class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600
-                       px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition
-                       hover:from-indigo-400 hover:to-violet-500
-                       focus:outline-none focus:ring-2 focus:ring-indigo-500/40">
+                class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 via-violet-500
+                       to-sky-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-violet-500/30
+                       transition hover:brightness-105
+                       focus:outline-none focus:ring-2 focus:ring-violet-400/50">
             Schedule my day
         </button>
     </form>
@@ -102,7 +102,7 @@
                            name="scheduled_start"
                            value="{{ task.scheduled_start.strftime('%Y-%m-%dT%H:%M') }}"
                            class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs shadow-sm transition
-                                  focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                  focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30">
                 </div>
 
                 <div>
@@ -112,7 +112,7 @@
                            name="scheduled_end"
                            value="{{ task.scheduled_end.strftime('%Y-%m-%dT%H:%M') if task.scheduled_end else '' }}"
                            class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs shadow-sm transition
-                                  focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                  focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30">
                 </div>
 
                 <button type="submit"
