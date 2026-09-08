@@ -24,68 +24,111 @@
         /* Hide Alpine-managed elements until Alpine has evaluated them, so
            mutually exclusive states do not all flash on first paint. */
         [x-cloak] { display: none !important; }
+
+        /* Cards enter with a short stagger so a long list does not appear
+           all at once. */
+        @keyframes rise {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: none; }
+        }
+        .rise { animation: rise .35s cubic-bezier(.21,.61,.35,1) both; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .rise { animation: none; }
+        }
     </style>
 
     {% block head %}{% endblock %}
 </head>
 
+{# Pages that own the whole viewport (the auth screens) fill this block
+   instead, bypassing the nav bar and the centred container. #}
+{% block fullbleed %}
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
 
-    <nav class="border-b border-slate-200 bg-white">
-        <div class="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+    <nav class="sticky top-0 z-20 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
+        <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
 
             <a href="{{ url_for('home') }}"
-               class="text-lg font-semibold tracking-tight text-slate-900">
+               class="flex items-center gap-2 text-base font-semibold tracking-tight text-slate-900">
+                <span class="flex h-7 w-7 items-center justify-center rounded-lg
+                             bg-gradient-to-br from-indigo-500 to-violet-600">
+                    <svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"
+                         stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                    </svg>
+                </span>
                 Task Master
             </a>
 
-            <div class="flex items-center gap-4 text-sm">
+            <div class="flex items-center gap-1 text-sm">
                 {% if session.get('user_id') %}
                     <a href="{{ url_for('home') }}"
-                       class="text-slate-600 hover:text-slate-900">Tasks</a>
+                       class="rounded-lg px-3 py-1.5 font-medium transition
+                              {% if request.endpoint == 'home' %}bg-slate-100 text-slate-900
+                              {% else %}text-slate-600 hover:bg-slate-100 hover:text-slate-900{% endif %}">
+                        Tasks
+                    </a>
                     <a href="{{ url_for('schedule_day') }}"
-                       class="text-slate-600 hover:text-slate-900">Schedule</a>
+                       class="rounded-lg px-3 py-1.5 font-medium transition
+                              {% if request.endpoint == 'schedule_day' %}bg-slate-100 text-slate-900
+                              {% else %}text-slate-600 hover:bg-slate-100 hover:text-slate-900{% endif %}">
+                        Schedule
+                    </a>
 
                     <div x-data="reminderNotifier({{ reminder_poll_seconds }})"
                          x-cloak
-                         class="flex items-center">
+                         class="ml-1 flex items-center">
 
                         <button type="button"
                                 x-show="supported && permission === 'default'"
                                 x-on:click="requestPermission()"
-                                class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs
-                                       font-medium text-slate-700 hover:bg-slate-50">
-                            Enable notifications
+                                class="flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5
+                                       text-xs font-medium text-slate-700 transition hover:bg-slate-100">
+                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                      d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/>
+                            </svg>
+                            Enable alerts
                         </button>
 
                         <span x-show="permission === 'granted'"
-                              class="text-xs text-emerald-700"
-                              title="Reminders will appear while this tab is open">
-                            Notifications on
+                              class="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5
+                                     text-xs font-medium text-emerald-700"
+                              title="Reminders appear while this tab is open">
+                            <span class="relative flex h-1.5 w-1.5">
+                                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                                <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                            </span>
+                            Alerts on
                         </span>
 
                         <span x-show="permission === 'denied'"
-                              class="text-xs text-slate-500"
+                              class="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs text-slate-500"
                               title="Re-enable notifications for this site in your browser settings">
-                            Notifications blocked
+                            Alerts blocked
                         </span>
 
                         <span x-show="!supported"
-                              class="text-xs text-slate-500">
-                            Notifications unsupported
+                              class="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs text-slate-500">
+                            Alerts unsupported
                         </span>
 
                     </div>
 
                     <a href="{{ url_for('logout') }}"
-                       class="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700">
+                       class="ml-1 rounded-lg px-3 py-1.5 font-medium text-slate-600 transition
+                              hover:bg-slate-100 hover:text-slate-900">
                         Log out
                     </a>
                 {% else %}
                     <a href="{{ url_for('login') }}"
-                       class="text-slate-600 hover:text-slate-900">Log in</a>
+                       class="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition hover:bg-slate-100">
+                        Log in
+                    </a>
                     <a href="{{ url_for('register') }}"
-                       class="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700">
+                       class="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white transition hover:bg-slate-700">
                         Register
                     </a>
                 {% endif %}
@@ -94,14 +137,20 @@
         </div>
     </nav>
 
-    <main class="mx-auto max-w-4xl px-4 py-8">
+    <main class="mx-auto max-w-5xl px-4 py-8">
 
         {% with messages = get_flashed_messages() %}
             {% if messages %}
                 <div class="mb-6 space-y-2">
                     {% for message in messages %}
-                        <div class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                            {{ message }}
+                        <div class="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50
+                                    px-4 py-3 text-sm text-amber-900 shadow-sm">
+                            <svg class="mt-0.5 h-4 w-4 shrink-0 text-amber-600" fill="none" viewBox="0 0 24 24"
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                      d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/>
+                            </svg>
+                            <span>{{ message }}</span>
                         </div>
                     {% endfor %}
                 </div>
@@ -113,4 +162,5 @@
     </main>
 
 </body>
+{% endblock %}
 </html>

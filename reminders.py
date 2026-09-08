@@ -18,6 +18,7 @@ START_LOOKBACK_SECONDS = POLL_INTERVAL_SECONDS * 5
 
 OVERRUN_TYPE = 'overrun'
 START_TYPE = 'start'
+STALE_TYPE = 'stale'
 
 
 def _claim(db, reminder_model, todo_id, reminder_type):
@@ -94,5 +95,39 @@ def find_due_to_start(db, todo_model, reminder_model, user_id, now=None):
         if not _claim(db, reminder_model, task.id, START_TYPE):
             continue
         found.append({'todo_id': task.id, 'title': task.content})
+
+    return found
+
+
+def find_stale(db, todo_model, reminder_model, user_id, now=None):
+    """Tasks never started that have sat longer than their estimate.
+
+    This complements the overrun check, which measures time actually worked.
+    A task can only overrun once someone starts it, so a task left untouched
+    would otherwise never raise anything at all.
+    """
+    now = now or datetime.utcnow()
+
+    candidates = todo_model.query.filter(
+        todo_model.user_id == user_id,
+        todo_model.status.in_(('pending', 'scheduled')),
+        todo_model.actual_start.is_(None),
+        todo_model.estimated_minutes.isnot(None),
+        todo_model.date_created.isnot(None),
+    ).all()
+
+    found = []
+    for task in candidates:
+        age_minutes = (now - task.date_created).total_seconds() / 60
+        if age_minutes <= task.estimated_minutes * OVERRUN_FACTOR:
+            continue
+        if not _claim(db, reminder_model, task.id, STALE_TYPE):
+            continue
+
+        found.append({
+            'todo_id': task.id,
+            'title': task.content,
+            'age_minutes': int(age_minutes),
+        })
 
     return found

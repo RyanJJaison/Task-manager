@@ -422,14 +422,19 @@ def check_reminders():
     try:
         overruns = reminders.find_overruns(db, Todo, Reminder, user_id)
         due_to_start = reminders.find_due_to_start(db, Todo, Reminder, user_id)
+        stale = reminders.find_stale(db, Todo, Reminder, user_id)
     except Exception:
         db.session.rollback()
         app.logger.exception('Reminder check failed for user %s', user_id)
         # An empty result keeps the client polling without raising a
         # notification it cannot substantiate.
-        return jsonify({'overruns': [], 'due_to_start': []})
+        return jsonify({'overruns': [], 'due_to_start': [], 'stale': []})
 
-    return jsonify({'overruns': overruns, 'due_to_start': due_to_start})
+    return jsonify({
+        'overruns': overruns,
+        'due_to_start': due_to_start,
+        'stale': stale,
+    })
 
 
 @app.route('/schedule', methods=['GET', 'POST'])

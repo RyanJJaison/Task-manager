@@ -17,8 +17,10 @@
     <form action="{{ url_for('schedule_day') }}" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit"
-                class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white
-                       hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500">
+                class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600
+                       px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition
+                       hover:from-indigo-400 hover:to-violet-500
+                       focus:outline-none focus:ring-2 focus:ring-indigo-500/40">
             Schedule my day
         </button>
     </form>
@@ -31,7 +33,7 @@
 
     {% if not scheduled %}
 
-    <div class="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
+    <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
         <p class="text-sm text-slate-500">
             Nothing scheduled yet. Use &ldquo;Schedule my day&rdquo; to build a plan.
         </p>
@@ -46,7 +48,7 @@
         {% set state = task.display_status %}
 
         <li data-status="{{ state }}"
-            class="rounded-lg border bg-white p-4 shadow-sm
+            class="rise rounded-2xl border bg-white p-4 shadow-sm transition hover:shadow-md
                    {% if state == 'completed' %}border-slate-200 opacity-70
                    {% elif state == 'overrun' %}border-rose-300
                    {% elif state == 'in_progress' %}border-blue-300
@@ -99,8 +101,8 @@
                            id="start-{{ task.id }}"
                            name="scheduled_start"
                            value="{{ task.scheduled_start.strftime('%Y-%m-%dT%H:%M') }}"
-                           class="rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm
-                                  focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500">
+                           class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs shadow-sm transition
+                                  focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
                 </div>
 
                 <div>
@@ -109,13 +111,13 @@
                            id="end-{{ task.id }}"
                            name="scheduled_end"
                            value="{{ task.scheduled_end.strftime('%Y-%m-%dT%H:%M') if task.scheduled_end else '' }}"
-                           class="rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm
-                                  focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500">
+                           class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs shadow-sm transition
+                                  focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
                 </div>
 
                 <button type="submit"
-                        class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium
-                               text-slate-700 hover:bg-slate-50">
+                        class="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium
+                               text-slate-700 transition hover:bg-slate-50">
                     Save times
                 </button>
 
@@ -146,8 +148,8 @@
     <ul class="space-y-2">
         {% for task in unscheduled %}
         <li data-status="{{ task.display_status }}"
-            class="flex flex-wrap items-center justify-between gap-2 rounded-lg border
-                   border-slate-200 bg-white px-4 py-3">
+            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border
+                   border-slate-200 bg-white px-4 py-3 shadow-sm">
             <span class="min-w-0 flex-1 truncate text-sm text-slate-900">{{ task.content }}</span>
             <span class="text-xs text-slate-500">
                 {{ task.estimated_minutes or '?' }} min &middot; priority {{ task.priority }}

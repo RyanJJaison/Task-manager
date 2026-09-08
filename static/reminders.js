@@ -119,6 +119,13 @@ function reminderNotifier(pollSeconds) {
                     `"${item.title}" was due to start.`
                 );
             });
+
+            (payload.stale || []).forEach((item) => {
+                this.notify(
+                    'Task still not started',
+                    `"${item.title}" has been waiting ${item.age_minutes} minute(s), longer than its estimate.`
+                );
+            });
         },
 
         notify(title, body) {
