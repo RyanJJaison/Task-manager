@@ -61,7 +61,12 @@ def upgrade():
 
     # Keep the new status column consistent with the old completed flag so
     # existing rows do not end up marked pending while completed is true.
-    op.execute("UPDATE todo SET status = 'completed' WHERE completed = 1")
+    # Compared against a typed true rather than the integer 1, because
+    # Postgres rejects comparing a boolean column to an integer.
+    todo = sa.table('todo', sa.column('status', sa.String), sa.column('completed', sa.Boolean))
+    op.execute(
+        todo.update().where(todo.c.completed.is_(True)).values(status='completed')
+    )
 
 
 def downgrade():

@@ -11,8 +11,8 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
+from sqlalchemy.pool import NullPool
 from datetime import datetime, timedelta
-import pymysql
 
 import estimation
 import reminders
@@ -20,10 +20,11 @@ import scheduling
 
 load_dotenv()
 
-pymysql.install_as_MySQLdb()
-
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+# Supabase runs its own connection pooler, so a second pool in this process
+# would hold connections the pooler expects to manage.
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'poolclass': NullPool}
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 
 if not app.config['SQLALCHEMY_DATABASE_URI']:
